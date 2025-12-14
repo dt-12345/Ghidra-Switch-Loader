@@ -25,7 +25,6 @@ import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.ByteProviderWrapper;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.*;
-import ghidra.framework.model.Project;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
@@ -40,7 +39,7 @@ import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
-public class SwitchLoader extends BinaryLoader 
+public class SwitchLoader extends AbstractProgramWrapperLoader 
 {
     public static final String SWITCH_NAME = "Nintendo Switch Binary";
     public static final LanguageID AARCH64_LANGUAGE_ID = new LanguageID("AARCH64:LE:64:v8A");
@@ -97,45 +96,11 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    protected List<Loaded<Program>> loadProgram(ByteProvider provider, String programName, 
-            Project project, String programFolderPath, LoadSpec loadSpec, List<Option> options, 
-            MessageLog log, Object consumer, TaskMonitor monitor) 
-            throws IOException, CancelledException {
-        
-        LanguageCompilerSpecPair pair = loadSpec.getLanguageCompilerSpec();
-        Language importerLanguage = getLanguageService().getLanguage(pair.languageID);
-        CompilerSpec importerCompilerSpec = importerLanguage.getCompilerSpecByID(pair.compilerSpecID);
-
-        Address baseAddr = importerLanguage.getAddressFactory().getDefaultAddressSpace().getAddress(0);
-        Program prog = createProgram(provider, programName, baseAddr, getName(), 
-                importerLanguage, importerCompilerSpec, consumer);
-        boolean success = false;
-
-        List<Loaded<Program>> results;
-
-        try 
-        {
-            this.loadProgramInto(provider, loadSpec, options, log, prog, monitor);
-            success = true;
-            results = List.of(new Loaded<Program>(prog, programName, programFolderPath));
-        }
-        finally 
-        {
-            if (!success) 
-            {
-                prog.release(consumer);
-            }
-        }
-
-        return results;
-    }
-
-    @Override
-    protected void loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options, 
-            MessageLog log, Program program, TaskMonitor monitor) 
+    public void load(Program program, ImporterSettings settings)
             throws IOException, CancelledException {
         
         var space = program.getAddressFactory().getDefaultAddressSpace();
+        var provider = settings.provider();
         
         if (this.binaryType == BinaryType.SX_KIP1)
         {
@@ -144,7 +109,8 @@ public class SwitchLoader extends BinaryLoader
 
         var adapter = this.binaryType.createAdapter(program, provider);
         
-        // Set the base address
+        // Set the base address - MUST be within a transaction
+        int txId = program.startTransaction("Set Image Base");
         try 
         {
             long baseAddress = adapter.isAarch32() ? 0x60000000L : 0x7100000000L;
@@ -155,19 +121,21 @@ public class SwitchLoader extends BinaryLoader
             }
 
             program.setImageBase(space.getAddress(baseAddress), true);
+            program.endTransaction(txId, true);
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
+        catch (AddressOverflowException | LockException | AddressOutOfBoundsException e) 
         {
+            program.endTransaction(txId, false);
             Msg.error(this, "Failed to set image base", e);
         }
 
         var loader = new NXProgramBuilder(program, provider, adapter);
-        loader.load(monitor);
+        loader.load(settings.monitor());
         
         if (this.binaryType == BinaryType.KIP1)
         {
             // KIP1s always start with a branch instruction at the start of their text
-            loader.createEntryFunction("entry", program.getImageBase().getOffset(), monitor);
+            loader.createEntryFunction("entry", program.getImageBase().getOffset(), settings.monitor());
         }
     }
 
