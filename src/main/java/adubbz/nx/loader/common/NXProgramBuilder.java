@@ -7,6 +7,8 @@
 package adubbz.nx.loader.common;
 
 import adubbz.nx.common.NXRelocation;
+import adubbz.nx.loader.nxo.MOD0Adapter;
+import adubbz.nx.loader.nxo.MOD0Header;
 import adubbz.nx.loader.nxo.NXO;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOSection;
@@ -122,7 +124,99 @@ public class NXProgramBuilder
             
             this.setupRelocations(monitor);
             this.createGlobalOffsetTable();
+
+            if (adapter instanceof MOD0Adapter)
+            {
+                MOD0Adapter mod0Adapter = (MOD0Adapter) adapter;
+                MOD0Header mod0 = mod0Adapter.getMOD0();
+                if (mod0.getEhFrameHdrStartOffset() > 0 && mod0.getEhFrameHdrEndOffset() > 0)
+                {
+                    long ehFrameHdrStartOffset = (long) mod0.getEhFrameHdrStartOffset();
+                    long ehFrameHdrEndOffset = ((long) mod0.getEhFrameHdrEndOffset() + 0xF) & ~0xF;
+                    this.memBlockHelper.addSection(".eh_frame_hdr", ehFrameHdrStartOffset, ehFrameHdrStartOffset, ehFrameHdrEndOffset - ehFrameHdrStartOffset, true, false, false);
+                
+                    long ehFrameStartOffset = mod0Adapter.getEhFrameStartOffset();
+                    long ehFrameEndOffset = mod0Adapter.getEhFrameEndOffset(ehFrameStartOffset);
+                    if (ehFrameStartOffset != 0 && ehFrameEndOffset != 0)
+                        this.memBlockHelper.addSection(".eh_frame", ehFrameStartOffset, ehFrameStartOffset, ehFrameEndOffset - ehFrameStartOffset, true, false, false);
+                }
+
+                // see https://support.nintendo.com/jp/oss/index.html for reference
+
+                long mod0StartOffset = mod0.getHeaderOffset();
+                long mod0EndOffset = (mod0StartOffset + mod0.getHeaderSize() + 7) & ~7;
+                this.memBlockHelper.addSection(".rocrt.info", mod0StartOffset, mod0StartOffset, mod0EndOffset - mod0StartOffset, true, false, false);
+
+                if (mod0.isNewVersion())
+                {
+                    this.memBlockHelper.addSection(".rocrt.init", text.getOffset(), text.getOffset(), 12, true, false, true);
+                    this.memBlockHelper.addSection(".rocrt.initro", rodata.getOffset(), rodata.getOffset(), 12, true, false, false);
+                    
+                    long gnuBuildIdStartOffset = (long) mod0.getGnuBuildIdStartOffset();
+                    long gnuBuildIdEndOffset = (long) mod0.getGnuBuildIdEndOffset();
+                    this.memBlockHelper.addSection(".note.gnu.build-id", gnuBuildIdStartOffset, gnuBuildIdStartOffset, gnuBuildIdEndOffset - gnuBuildIdStartOffset, true, false, false);
+
+                    long nxDebugLinkStartOffset = (long) mod0.getNxDebugLinkStartOffset();
+                    long nxDebugLinkEndOffset = ((long) mod0.getNxDebugLinkEndOffset() + 3) & ~3;
+                    this.memBlockHelper.addSection(".nx_debuglink", nxDebugLinkStartOffset, nxDebugLinkStartOffset, nxDebugLinkEndOffset - nxDebugLinkStartOffset, true, false, false);
+
+                    // these exist within the RW portion of the NSO but are set to read-only at runtime by nn::ro::ProtectRelro
+                    long dataStart = data.getOffset() + this.nxo.getBaseAddress();
+                    long dataEnd = dataStart + data.getSize();
+                    long relroStart = (long) mod0.getRelroStartOffset();
+                    long relroEnd = data.getOffset() + data.getSize();
+                    long fullRelroEnd = (long) mod0.getFullRelroEndOffset(); // extends through .dynamic, .got, and .got.plt as well
+                    long alignmentStart = relroStart + this.nxo.getBaseAddress();
+                    Msg.info(this, String.format("Relro Start: 0x%x, Full Relro End: 0x%x", relroStart, fullRelroEnd));
+                    for (MemoryBlock block : this.program.getMemory().getBlocks())
+                    {
+                        if (block.getStart().getOffset() >= dataStart && block.getStart().getOffset() < dataEnd)
+                        {
+                            if (block.getStart().getOffset() == dataStart)
+                                relroStart = block.getEnd().getOffset() - this.nxo.getBaseAddress() + 1;
+                            else
+                                relroEnd = Math.min(relroEnd, block.getStart().getOffset() - this.nxo.getBaseAddress());
+                            alignmentStart = Math.max(alignmentStart, block.getEnd().getOffset() + 1);
+                        }
+                    }
+
+                    if (relroEnd - relroStart > 0)
+                        this.memBlockHelper.addSection(".data.rel.ro", relroStart, relroStart, relroEnd - relroStart, true, false, false);
+                    if (fullRelroEnd - (alignmentStart - this.nxo.getBaseAddress()) > 0)
+                    {
+                        long alignmentStartOffset = alignmentStart - this.nxo.getBaseAddress();
+                        this.memBlockHelper.addSection(".rocrt.align.relroend", alignmentStartOffset, alignmentStartOffset, fullRelroEnd - alignmentStartOffset, true, false, false);
+                    }
+                }
+                else
+                {
+                    this.memBlockHelper.addSection(".rocrt.init", text.getOffset(), text.getOffset(), 8, true, false, true);
+                    
+                    // search for gnu build id maybe? we could also just assume it comes after .eh_frame (seems to be the case)
+
+                    // can we safely assume .nx_debuglink goes from RO start to the first dynamic section?
+                    long rodataStart = rodata.getOffset() + this.nxo.getBaseAddress();
+                    long rodataEnd = rodataStart + rodata.getSize();
+                    long minRodataAddr = rodataEnd;
+                    for (MemoryBlock block : this.program.getMemory().getBlocks())
+                    {
+                        if (block.getStart().getOffset() >= rodataStart && block.getStart().getOffset() < rodataEnd)
+                            minRodataAddr = Math.min(minRodataAddr, block.getStart().getOffset());
+                    }
+    
+                    if (minRodataAddr < rodataEnd && minRodataAddr > rodataStart)
+                        this.memBlockHelper.addSection(".nx_debuglink", rodata.getOffset(), rodata.getOffset(), minRodataAddr - rodataStart, true, false, false);
+                }
+
+                // other sections to identify (most of these would be easier to do post-load rather than right now):
+                // - .atexit => parse __cxa_atexit() calls? would need to identify the function first
+                // - .api_info => check the callsites of nn::util::ReferSymbol but that's annoying without prior analysis (we could just assume it just lives between the eh_frame and build id)
+                // - .tdata => does this exist?
+                // - .tbss => parse __nnmusl_init_dso() arguments
+                // - .rocrt.align.bssend => only on newer versions, presumably padding .bss to 0x1000? kinda unnecessary though
+            }
             
+            // Nintendo uses EX, RO, RW, and ZI for .text, .rodata, .data, and .bss, respectively but whatever
             this.memBlockHelper.addFillerSection(".text", text.getOffset(), text.getSize(), true, false, true);
             this.memBlockHelper.addFillerSection(".rodata", rodata.getOffset(), rodata.getSize(), true, false, false);
             this.memBlockHelper.addFillerSection(".data", data.getOffset(), data.getSize(), true, true, false);
@@ -227,6 +321,7 @@ public class NXProgramBuilder
         {
             long pltGotOff = adapter.getDynamicTable(this.program).getDynamicValue(ElfDynamicType.DT_PLTGOT);
             this.memBlockHelper.addSection(".got.plt", pltGotOff, pltGotOff, pltGotEnd - pltGotOff, true, false, false);
+            pltGotStart = pltGotOff;
         }
         
         // Only add .plt on aarch64

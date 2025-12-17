@@ -43,6 +43,7 @@ public class MemoryBlockHelper
         try
         {
             FileBytes fileBytes = MemoryBlockUtils.createFileBytes(this.program, this.byteProvider, offset, length, this.monitor);
+            Msg.info(this, "Adding new section " + name + " at " + offset + " of size " + length);
             MemoryBlockUtils.createInitializedBlock(this.program, false, name, this.program.getImageBase().add(addressOffset), fileBytes, 0, length, "", null, read, write, execute, this.log);
         }
         catch (Exception e)
