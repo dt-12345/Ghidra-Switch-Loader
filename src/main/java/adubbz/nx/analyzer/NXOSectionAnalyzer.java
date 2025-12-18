@@ -38,12 +38,16 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
     
     protected static final String OPTION_NAME_APPLY_DATATYPES = "Apply Known Datatypes";
     protected static final String OPTION_DESCRIPTION_APPLY_DATATYPES = "Add and apply datatypes for known structures associated with sections";
-    
     private static final boolean OPTION_DEFAULT_APPLY_DATATYPES = true;
     private boolean applyDataTypes = OPTION_DEFAULT_APPLY_DATATYPES;
     
+    protected static final String OPTION_NAME_SEARCH_BUILD_ID = "Byte Search for GNU Build ID";
+    protected static final String OPTION_DESCRIPTION_SEARCH_BUILD_ID = "Attempt to search for a matching GNU Build ID section if none exists";
+    private static final boolean OPTION_DEFAULT_SEARCH_BUILD_ID = true;
+    private boolean searchBuildId = OPTION_DEFAULT_SEARCH_BUILD_ID;
+    
     private static final CategoryPath ROCRT_PATH = new CategoryPath("/nn/rocrt");
-    private static final CategoryPath DEFAULT_PATH = new CategoryPath("/nn/rocrt");
+    private static final CategoryPath DEFAULT_PATH = new CategoryPath("/SwitchLoader");
 
     private static final byte[] GNU_BUILD_ID_PATTERN1 = HexFormat.of().parseHex("040000001400000003000000474E5500"); // used in newer binaries
     private static final byte[] GNU_BUILD_ID_PATTERN2 = HexFormat.of().parseHex("040000001000000003000000474E5500"); // used in older binaries
@@ -86,7 +90,8 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
         }
         else
         {
-            searchAndLabelGnuBuildId(program, monitor, log);
+            if (searchBuildId)
+                searchAndLabelGnuBuildId(program, monitor, log);
         }
 
         try
@@ -419,11 +424,13 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
     public void registerOptions(Options options, Program program) 
     {
         options.registerOption(OPTION_NAME_APPLY_DATATYPES, applyDataTypes, null, OPTION_DESCRIPTION_APPLY_DATATYPES);
+        options.registerOption(OPTION_NAME_SEARCH_BUILD_ID, searchBuildId, null, OPTION_DESCRIPTION_SEARCH_BUILD_ID);
     }
 
     @Override
 	public void optionsChanged(Options options, Program program)
     {
 		applyDataTypes = options.getBoolean(OPTION_NAME_APPLY_DATATYPES, applyDataTypes);
+		searchBuildId = options.getBoolean(OPTION_NAME_SEARCH_BUILD_ID, searchBuildId);
 	}
 }
