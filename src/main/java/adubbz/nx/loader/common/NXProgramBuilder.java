@@ -207,13 +207,6 @@ public class NXProgramBuilder
                     if (minRodataAddr < rodataEnd && minRodataAddr > rodataStart)
                         this.memBlockHelper.addSection(".nx_debuglink", rodata.getOffset(), rodata.getOffset(), minRodataAddr - rodataStart, true, false, false);
                 }
-
-                // other sections to identify (most of these would be easier to do post-load rather than right now):
-                // - .atexit => parse __cxa_atexit() calls? would need to identify the function first
-                // - .api_info => check the callsites of nn::util::ReferSymbol but that's annoying without prior analysis (we could just assume it just lives between the eh_frame and build id)
-                // - .tdata => does this exist?
-                // - .tbss => parse __nnmusl_init_dso() arguments
-                // - .rocrt.align.bssend => only on newer versions, presumably padding .bss to 0x1000? kinda unnecessary though
             }
             
             // Nintendo uses EX, RO, RW, and ZI for .text, .rodata, .data, and .bss, respectively but whatever
