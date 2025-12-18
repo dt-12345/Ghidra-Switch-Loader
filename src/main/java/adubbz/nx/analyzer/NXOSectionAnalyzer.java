@@ -268,7 +268,7 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
                 continue;
 
             String fieldName = component.getFieldName();
-            if (fieldName == null || !fieldName.endsWith("_offset"))
+            if (fieldName == null || !fieldName.endsWith("Offset"))
                 continue;
 
             try
