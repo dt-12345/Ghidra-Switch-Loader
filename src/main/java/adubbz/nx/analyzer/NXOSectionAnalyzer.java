@@ -42,7 +42,8 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
     private static final boolean OPTION_DEFAULT_APPLY_DATATYPES = true;
     private boolean applyDataTypes = OPTION_DEFAULT_APPLY_DATATYPES;
     
-    private static final CategoryPath CATEGORY_PATH = new CategoryPath("/SwitchLoader");
+    private static final CategoryPath ROCRT_PATH = new CategoryPath("/nn/rocrt");
+    private static final CategoryPath DEFAULT_PATH = new CategoryPath("/nn/rocrt");
 
     private static final byte[] GNU_BUILD_ID_PATTERN1 = HexFormat.of().parseHex("040000001400000003000000474E5500"); // used in newer binaries
     private static final byte[] GNU_BUILD_ID_PATTERN2 = HexFormat.of().parseHex("040000001000000003000000474E5500"); // used in older binaries
@@ -210,38 +211,38 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
 
             if (applyDataTypes)
             {
-                StructureDataType rocrtInitDt = new StructureDataType(CATEGORY_PATH, "__rocrt_init", 0, dtm);
-                rocrtInitDt.add(DWORD, "entry_instruction", "Entry Instruction or Version");
-                rocrtInitDt.add(DWORD, "rocrt_offset", "Offset to __rocrt relative to the start of this structure");
+                StructureDataType rocrtInitDt = new StructureDataType(ROCRT_PATH, "__rocrt_init", 0, dtm);
+                rocrtInitDt.add(DWORD, "entryInstruction", "Entry Instruction or Version");
+                rocrtInitDt.add(DWORD, "headerOffset", "Offset to __rocrt relative to the start of this structure");
                 if (!isOldVersion)
-                    rocrtInitDt.add(DWORD, "rocrt_ver_offset", "Offset to __rocrt_ver relative to the start of this structure");
+                    rocrtInitDt.add(DWORD, "versionOffset", "Offset to __rocrt_ver relative to the start of this structure");
                 applyDataType(program, monitor, log, rocrtInitDt, rocrtInit.getStart());
                 if (rocrtInitRo != null)
                     applyDataType(program, monitor, log, rocrtInitDt, rocrtInitRo.getStart());
 
-                StructureDataType rocrtHeader = new StructureDataType(CATEGORY_PATH, "__rocrt", 0, dtm);
+                StructureDataType rocrtHeader = new StructureDataType(ROCRT_PATH, "ModuleHeader", 0, dtm);
                 rocrtHeader.add(DWORD, "signature", "ROCRT module header signature (MOD0)");
-                rocrtHeader.add(DWORD, "dynamic_offset", "Offset to .dynamic relative to start of this structure");
-                rocrtHeader.add(DWORD, "bss_start_offset", "Offset to start of .bss relative to start of this structure");
-                rocrtHeader.add(DWORD, "bss_end_offset", "Offset to end of .bss relative to start of this structure");
-                rocrtHeader.add(DWORD, "eh_frame_hdr_start_offset", "Offset to start of .eh_frame_hdr relative to start of this structure");
-                rocrtHeader.add(DWORD, "eh_frame_hdr_end_offset", "Offset to end of .eh_frame_hdr relative to start of this structure");
-                rocrtHeader.add(DWORD, "runtime_module_object_offset", "Offset to nn::rocrt::g_RoModule relative to start of this structure");
+                rocrtHeader.add(DWORD, "dynamicOffset", "Offset to .dynamic relative to start of this structure");
+                rocrtHeader.add(DWORD, "bssStartOffset", "Offset to start of .bss relative to start of this structure");
+                rocrtHeader.add(DWORD, "bssEndOffset", "Offset to end of .bss relative to start of this structure");
+                rocrtHeader.add(DWORD, "ehFrameHdrStartOffset", "Offset to start of .eh_frame_hdr relative to start of this structure");
+                rocrtHeader.add(DWORD, "ehFrameHdrEndOffset", "Offset to end of .eh_frame_hdr relative to start of this structure");
+                rocrtHeader.add(DWORD, "runtimeModuleObjectOffset", "Offset to nn::rocrt::g_RoModule relative to start of this structure");
                 if (!isOldVersion)
                 {
-                    rocrtHeader.add(DWORD, "relro_start_offset", "Offset to start of region protected by RELRO relative to start of this structure");
-                    rocrtHeader.add(DWORD, "full_relro_end_offset", "Offset to end of region protected by RELRO relative to start of this structure");
-                    rocrtHeader.add(DWORD, "nx_debuglink_start_offset", "Offset to start of .nx_debuglink relative to start of this structure");
-                    rocrtHeader.add(DWORD, "nx_debuglink_end_offset", "Offset to end of .nx_debuglink relative to start of this structure");
-                    rocrtHeader.add(DWORD, "gnu_build_id_start_offset", "Offset to start of .note.gnu.build-id relative to start of this structure");
-                    rocrtHeader.add(DWORD, "gnu_build_id_end_offset", "Offset to end of .note.gnu.build-id relative to start of this structure");
+                    rocrtHeader.add(DWORD, "relroStartOffset", "Offset to start of region protected by RELRO relative to start of this structure");
+                    rocrtHeader.add(DWORD, "fullRelroEndOffset", "Offset to end of region protected by RELRO relative to start of this structure");
+                    rocrtHeader.add(DWORD, "nxDebugLinkStartOffset", "Offset to start of .nx_debuglink relative to start of this structure");
+                    rocrtHeader.add(DWORD, "nxDebugLinkEndOffset", "Offset to end of .nx_debuglink relative to start of this structure");
+                    rocrtHeader.add(DWORD, "gnuBuildIdStartOffset", "Offset to start of .note.gnu.build-id relative to start of this structure");
+                    rocrtHeader.add(DWORD, "gnuBuildIdEndOffset", "Offset to end of .note.gnu.build-id relative to start of this structure");
                 }
                 if (rocrt != null)
                 {
                     applyDataType(program, monitor, log, rocrtHeader, rocrt.getStart());
                     if (!isOldVersion)
                     {
-                        StructureDataType rocrtVer = new StructureDataType(CATEGORY_PATH, "__rocrt_ver", 0, dtm);
+                        StructureDataType rocrtVer = new StructureDataType(ROCRT_PATH, "ModuleVersion", 0, dtm);
                         rocrtVer.add(DWORD, "major", "Major version");
                         rocrtVer.add(DWORD, "minor", "Minor version");
                         rocrtVer.add(DWORD, "patch", "Patch version");
@@ -292,7 +293,7 @@ public class NXOSectionAnalyzer extends AbstractAnalyzer
             return;
 
         int nameLen = program.getMemory().getInt(nxDebugLink.getStart().add(4));
-        StructureDataType dt = new StructureDataType(CATEGORY_PATH, "nx_debuglink", 0, program.getDataTypeManager());
+        StructureDataType dt = new StructureDataType(DEFAULT_PATH, "nx_debuglink", 0, program.getDataTypeManager());
         dt.add(DWORD, "", "");
         dt.add(DWORD, "module_name_len", "Length of module name");
         if (nameLen > 0)
