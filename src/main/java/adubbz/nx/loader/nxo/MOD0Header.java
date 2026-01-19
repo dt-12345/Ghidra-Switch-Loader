@@ -78,9 +78,9 @@ public class MOD0Header
 
             this.lnxMagic = "";
 
-            int majorVer = (int) this.thisOffset + reader.readNextInt();
-            int minorVer = (int) this.thisOffset + reader.readNextInt();
-            int patchVer = (int) this.thisOffset + reader.readNextInt();
+            int majorVer = reader.readNextInt();
+            int minorVer = reader.readNextInt();
+            int patchVer = reader.readNextInt();
             Msg.info(this, String.format("SDK Version: %d.%d.%d", majorVer, minorVer, patchVer));
         }
         else

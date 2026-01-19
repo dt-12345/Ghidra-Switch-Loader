@@ -152,7 +152,6 @@ public class NXProgramBuilder
                     if (mod0.isNewVersion())
                     {
                         this.memBlockHelper.addSection(".rocrt.init", text.getOffset(), text.getOffset(), 12, true, false, true);
-                        this.memBlockHelper.addSection(".rocrt.initro", rodata.getOffset(), rodata.getOffset(), 12, true, false, false);
                         
                         long gnuBuildIdStartOffset = (long) mod0.getGnuBuildIdStartOffset();
                         long gnuBuildIdEndOffset = (long) mod0.getGnuBuildIdEndOffset();
@@ -162,6 +161,10 @@ public class NXProgramBuilder
                         long nxDebugLinkEndOffset = ((long) mod0.getNxDebugLinkEndOffset() + 3) & ~3;
                         this.memBlockHelper.addSection(".nx_debuglink", nxDebugLinkStartOffset, nxDebugLinkStartOffset, nxDebugLinkEndOffset - nxDebugLinkStartOffset, true, false, false);
     
+                        if (nxDebugLinkStartOffset != rodata.getOffset()) {
+                            this.memBlockHelper.addSection(".rocrt.initro", rodata.getOffset(), rodata.getOffset(), 12, true, false, false);
+                        }
+
                         // these exist within the RW portion of the NSO but are set to read-only at runtime by nn::ro::ProtectRelro
                         long dataStart = data.getOffset() + this.nxo.getBaseAddress();
                         long dataEnd = dataStart + data.getSize();
