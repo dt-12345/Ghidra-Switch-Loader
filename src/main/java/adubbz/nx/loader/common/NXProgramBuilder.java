@@ -330,6 +330,7 @@ public class NXProgramBuilder
         }
         
         int last = 12;
+        long resolver = -1;
         
         while (true)
         {
@@ -362,13 +363,21 @@ public class NXProgramBuilder
                 long paddr = base + ((immlo << 12) | (immhi << 14));
                 long poff = ((b >> 10) & 0xfffL) << 3;
                 long target = paddr + poff;
-                if (pltGotStart <= target && target < pltGotEnd)
-                    this.pltEntries.add(new PltEntry(off, target));
+                if (pltGotStart <= target && target < pltGotEnd) {
+                    // each .got.plt entry should point to the entry point of the resolver which is the first entry in the .plt
+                    // however, the loader automatically resolves .got.plt entries (and relocations are performed later anyways)
+                    if (Integer.toUnsignedLong(memoryReader.readInt(off - 4)) == 0xa9bf7bf0L) {
+                        resolver = off - 4;
+                    } else {
+                        this.pltEntries.add(new PltEntry(off, target));
+                    }
+                }
+
             }
         }
 
         if (!this.pltEntries.isEmpty()) {
-            long pltStart = this.pltEntries.get(0).off;
+            long pltStart = resolver == -1 ? this.pltEntries.get(0).off : resolver;
             long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
             this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
             // Disassemble the entire section, so AARCH64PltThunkAnalyzer works for functions within this binary.
